@@ -347,8 +347,11 @@ def render_table(header: list[str], rows: list[list[str]],
         row = list(row) + [""] * (n_cols - len(row))
         cells_xml = []
         for cidx, cell in enumerate(row):
+            # Заливка шапок таблиц снята (PR #71): w:fill="auto" вместо
+            # серого CLR_LIGHT_GRAY (#F2F2F2), чтобы шапка не отличалась
+            # цветом от тела таблицы.
             shading = (
-                f'<w:shd w:val="clear" w:color="auto" w:fill="{CLR_LIGHT_GRAY}"/>'
+                '<w:shd w:val="clear" w:color="auto" w:fill="auto"/>'
                 if is_header else ''
             )
             cells_xml.append(
