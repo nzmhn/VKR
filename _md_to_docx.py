@@ -347,16 +347,11 @@ def render_table(header: list[str], rows: list[list[str]],
         row = list(row) + [""] * (n_cols - len(row))
         cells_xml = []
         for cidx, cell in enumerate(row):
-            shading = (
-                f'<w:shd w:val="clear" w:color="auto" w:fill="{CLR_LIGHT_GRAY}"/>'
-                if is_header else ''
-            )
             cells_xml.append(
                 '<w:tc>'
                 '<w:tcPr>'
                 f'<w:tcW w:w="{widths_tw[cidx]}" w:type="dxa"/>'
                 f'{_cell_borders()}'
-                f'{shading}'
                 '<w:vAlign w:val="center"/>'
                 '</w:tcPr>'
                 f'{_cell_para(str(cell), bold=False, align=("center" if is_header else aligns[cidx]))}'
