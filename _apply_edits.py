@@ -103,17 +103,25 @@ DST_FIG.write_text("\n".join(fig_doc).rstrip() + "\n", encoding="utf-8")
 print(f"[2] Записан файл: {DST_FIG.name} "
       f"({DST_FIG.stat().st_size:,} байт)")
 
-# Удалить блоки из исходного md (с конца к началу, чтобы индексы не плыли).
+# Удалить ASCII-схемы и строки 'Источник:' из исходного md, но
+# СОХРАНИТЬ строку-подпись 'Рис. N.N.N. ...' и оставить пустое место
+# перед ней (чтобы при вёрстке туда можно было вставить картинку).
+# Идём с конца к началу, чтобы индексы не плыли.
 removed_total = 0
 for start, end, num, name in reversed(figure_blocks):
-    # Расширим end до пустой строки после подписи (если есть).
-    extended_end = end
-    if extended_end + 1 < len(lines) and lines[extended_end + 1].strip() == "":
-        extended_end += 1
-    removed_total += extended_end - start + 1
-    del lines[start:extended_end + 1]
+    # end — индекс строки с подписью; её сохраняем.
+    # Удаляем диапазон [start, end-1] (всё до подписи: ASCII + Источник + пустые).
+    if end > start:
+        removed_total += end - start
+        del lines[start:end]
+    # Теперь подпись находится на индексе start. Перед ней должна быть
+    # одна пустая строка (как разделитель абзацев). Если предыдущая
+    # строка не пустая, добавляем пустую.
+    if start > 0 and lines[start - 1].strip() != "":
+        lines.insert(start, "")
 
-print(f"[2] Удалено из ВКР ГОТОВОЕ.md: {removed_total} строк (7 блоков)")
+print(f"[2] Удалено из ВКР ГОТОВОЕ.md: {removed_total} строк (7 блоков, "
+      f"подписи 'Рис. N.N.N.' сохранены)")
 
 # ---------------------------------------------------------------------------
 # 3. Перестроить таблицы 2.2.5, 3.3.1, 3.3.6 в длинный формат
