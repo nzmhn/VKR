@@ -41,6 +41,12 @@ MARGIN_BOTTOM_TW = 20 * TWIPS_PER_CM // 10
 CONTENT_W_TW = PAGE_W_TW - MARGIN_LEFT_TW - MARGIN_RIGHT_TW
 CONTENT_W_CM = CONTENT_W_TW / TWIPS_PER_CM
 
+# English Metric Units для DrawingML: 1 см = 360 000 EMU.
+EMU_PER_CM = 360000
+CONTENT_W_EMU = int(CONTENT_W_CM * EMU_PER_CM)
+# Максимальная высота рисунка, чтобы он помещался на странице A4.
+MAX_FIG_H_CM = 20.0
+
 FONT_MAIN = "Times New Roman"
 FONT_MONO = "Courier New"
 SZ_BODY_HP = 28        # 14 pt
@@ -461,6 +467,123 @@ def render_table(header: list[str], rows: list[list[str]],
 
 
 # ---------------------------------------------------------------------------
+# Рисунки: встраивание PNG (DrawingML pic:pic), без внешних зависимостей
+# ---------------------------------------------------------------------------
+
+import struct
+
+
+def png_size_px(path: Path) -> tuple[int, int]:
+    """Ширина/высота PNG из заголовка IHDR (big-endian), без PIL."""
+    try:
+        data = path.read_bytes()[:24]
+        if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+            w, h = struct.unpack(">II", data[16:24])
+            if w > 0 and h > 0:
+                return int(w), int(h)
+    except Exception:
+        pass
+    return 1600, 1000  # запасное соотношение 16:10
+
+
+class ImageRegistry:
+    """Накопитель встраиваемых изображений с присвоением rId и путей media/."""
+
+    def __init__(self, base_dir: Path):
+        self.base_dir = Path(base_dir)
+        self.items: list[dict] = []
+        self._by_key: dict[str, dict] = {}
+        # styles/settings/fontTable/numbering уже заняли rId1..rId4.
+        self._rid_n = 4
+        self._doc_id = 1000
+
+    def register(self, rel_path: str) -> dict:
+        abspath = (self.base_dir / rel_path)
+        key = str(abspath)
+        if key in self._by_key:
+            return self._by_key[key]
+        self._rid_n += 1
+        self._doc_id += 1
+        idx = len(self.items) + 1
+        item = {
+            "rid": f"rId{self._rid_n}",
+            "target": f"media/image{idx}.png",
+            "abspath": abspath,
+            "doc_id": self._doc_id,
+            "rel_path": rel_path,
+        }
+        self._by_key[key] = item
+        self.items.append(item)
+        return item
+
+
+def image_paragraph(reg: "ImageRegistry", rel_path: str, alt: str = "") -> str:
+    """Центрированный абзац с инлайн-рисунком, вписанным по ширине набора."""
+    item = reg.register(rel_path)
+    w_px, h_px = png_size_px(item["abspath"])
+    aspect = (w_px / h_px) if h_px else 1.6
+    w_cm = CONTENT_W_CM
+    h_cm = w_cm / aspect
+    if h_cm > MAX_FIG_H_CM:
+        h_cm = MAX_FIG_H_CM
+        w_cm = h_cm * aspect
+    cx = int(w_cm * EMU_PER_CM)
+    cy = int(h_cm * EMU_PER_CM)
+    rid = item["rid"]
+    did = item["doc_id"]
+    name = Path(rel_path).name
+    a_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    pic_ns = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+    drawing = (
+        '<w:r><w:drawing>'
+        '<wp:inline distT="0" distB="0" distL="0" distR="0">'
+        f'<wp:extent cx="{cx}" cy="{cy}"/>'
+        '<wp:effectExtent l="0" t="0" r="0" b="0"/>'
+        f'<wp:docPr id="{did}" name="Picture {did}" descr="{xe(alt)}"/>'
+        f'<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="{a_ns}" '
+        'noChangeAspect="1"/></wp:cNvGraphicFramePr>'
+        f'<a:graphic xmlns:a="{a_ns}">'
+        f'<a:graphicData uri="{pic_ns}">'
+        f'<pic:pic xmlns:pic="{pic_ns}">'
+        '<pic:nvPicPr>'
+        f'<pic:cNvPr id="{did}" name="{xe(name)}" descr="{xe(alt)}"/>'
+        '<pic:cNvPicPr/>'
+        '</pic:nvPicPr>'
+        '<pic:blipFill>'
+        f'<a:blip r:embed="{rid}"/>'
+        '<a:stretch><a:fillRect/></a:stretch>'
+        '</pic:blipFill>'
+        '<pic:spPr>'
+        f'<a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        '</pic:spPr>'
+        '</pic:pic>'
+        '</a:graphicData>'
+        '</a:graphic>'
+        '</wp:inline>'
+        '</w:drawing></w:r>'
+    )
+    return para(
+        drawing, align="center", indent_first=0,
+        line=LINE_SINGLE, space_before=120, space_after=60,
+        keep_next=True, keep_lines=True,
+    )
+
+
+# Подпись рисунка: строки, начинающиеся с «Рис. N» — по центру, без отступа.
+_FIG_CAPTION_RE = re.compile(r"^Рис\.\s*\d")
+
+
+def figure_caption_paragraph(text: str) -> str:
+    return para(
+        run(text, sz_hp=SZ_TABLE_HP),
+        align="center", indent_first=0,
+        line=LINE_SINGLE, space_before=0, space_after=200,
+        keep_lines=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Парсер markdown
 # ---------------------------------------------------------------------------
 
@@ -559,6 +682,15 @@ def parse_markdown(md_path: Path) -> list[dict]:
             i = j + 1 if j < n else j
             continue
 
+        # Картинка: ![alt](path)
+        m_img = re.match(r"^!\[(.*?)\]\((.*?)\)\s*$", stripped)
+        if m_img:
+            flush_all()
+            blocks.append({"type": "image", "alt": m_img.group(1).strip(),
+                           "path": m_img.group(2).strip()})
+            i += 1
+            continue
+
         # Заголовки.
         if stripped.startswith("# "):
             flush_all()
@@ -637,7 +769,7 @@ def parse_markdown(md_path: Path) -> list[dict]:
 # Рендер
 # ---------------------------------------------------------------------------
 
-def render_blocks(blocks: list[dict]) -> str:
+def render_blocks(blocks: list[dict], reg: "ImageRegistry") -> str:
     parts: list[str] = []
     for idx, b in enumerate(blocks):
         t = b["type"]
@@ -655,7 +787,12 @@ def render_blocks(blocks: list[dict]) -> str:
         elif t == "h2":
             parts.append(heading_h2(b["text"]))
         elif t == "para":
-            parts.append(body_paragraph(b["text"]))
+            if _FIG_CAPTION_RE.match(b["text"]):
+                parts.append(figure_caption_paragraph(b["text"]))
+            else:
+                parts.append(body_paragraph(b["text"]))
+        elif t == "image":
+            parts.append(image_paragraph(reg, b["path"], b.get("alt", "")))
         elif t == "quote":
             parts.append(quote_paragraph(b["text"]))
         elif t == "li":
@@ -709,6 +846,7 @@ CONTENT_TYPES_XML = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
   <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
@@ -834,12 +972,25 @@ def build_document_xml(body_xml: str) -> str:
     )
 
 
-def write_docx(out_path: Path, body_xml: str) -> None:
+def write_docx(out_path: Path, body_xml: str,
+               reg: "ImageRegistry | None" = None) -> None:
     doc_xml = build_document_xml(body_xml)
+    # Динамические связи документа: к базовым (styles/settings/fontTable/
+    # numbering) добавляем по одной связи на каждое встроенное изображение.
+    img_rels = ""
+    for it in (reg.items if reg else []):
+        img_rels += (
+            f'\n  <Relationship Id="{it["rid"]}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+            f'relationships/image" Target="{it["target"]}"/>'
+        )
+    doc_rels = DOC_RELS_XML.replace(
+        "</Relationships>", f"{img_rels}\n</Relationships>"
+    )
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", CONTENT_TYPES_XML)
         zf.writestr("_rels/.rels", ROOT_RELS_XML)
-        zf.writestr("word/_rels/document.xml.rels", DOC_RELS_XML)
+        zf.writestr("word/_rels/document.xml.rels", doc_rels)
         zf.writestr("word/document.xml", doc_xml)
         zf.writestr("word/styles.xml", STYLES_XML)
         zf.writestr("word/settings.xml", SETTINGS_XML)
@@ -847,6 +998,9 @@ def write_docx(out_path: Path, body_xml: str) -> None:
         zf.writestr("word/numbering.xml", NUMBERING_XML)
         zf.writestr("docProps/core.xml", CORE_XML)
         zf.writestr("docProps/app.xml", APP_XML)
+        # Встроенные изображения.
+        for it in (reg.items if reg else []):
+            zf.write(it["abspath"], f"word/{it['target']}")
 
 
 # ---------------------------------------------------------------------------
@@ -858,9 +1012,11 @@ def main() -> None:
     src = here / "ВКР ГОТОВОЕ.md"
     out = here / "ВКР ГОТОВОЕ.docx"
     blocks = parse_markdown(src)
-    body_xml = render_blocks(blocks)
-    write_docx(out, body_xml)
+    reg = ImageRegistry(here)
+    body_xml = render_blocks(blocks, reg)
+    write_docx(out, body_xml, reg)
     print(f"Записан файл: {out} ({out.stat().st_size:,} байт)")
+    print(f"Встроено изображений: {len(reg.items)}")
     by_type: dict[str, int] = {}
     for b in blocks:
         by_type[b["type"]] = by_type.get(b["type"], 0) + 1
