@@ -72,7 +72,8 @@ def xe(text: str) -> str:
 
 def run(text: str, *, sz_hp: int = SZ_BODY_HP, bold: bool = False,
         italic: bool = False, color: str = CLR_BLACK,
-        font: str = FONT_MAIN, preserve_space: bool = True) -> str:
+        font: str = FONT_MAIN, preserve_space: bool = True,
+        vert_align: str | None = None) -> str:
     rpr = ['<w:rPr>']
     rpr.append(
         f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}" '
@@ -84,6 +85,8 @@ def run(text: str, *, sz_hp: int = SZ_BODY_HP, bold: bool = False,
         rpr.append('<w:i/><w:iCs/>')
     rpr.append(f'<w:color w:val="{color}"/>')
     rpr.append(f'<w:sz w:val="{sz_hp}"/><w:szCs w:val="{sz_hp}"/>')
+    if vert_align in ("subscript", "superscript"):
+        rpr.append(f'<w:vertAlign w:val="{vert_align}"/>')
     rpr.append('<w:lang w:val="ru-RU"/>')
     rpr.append('</w:rPr>')
     space = ' xml:space="preserve"' if preserve_space else ""
@@ -91,6 +94,81 @@ def run(text: str, *, sz_hp: int = SZ_BODY_HP, bold: bool = False,
         f'<w:r>{"".join(rpr)}'
         f'<w:t{space}>{xe(text)}</w:t></w:r>'
     )
+
+
+def tab_run() -> str:
+    return '<w:r><w:tab/></w:r>'
+
+
+# Инлайн-разметка формул: _{...} и ^{...} (или односимвольные _x / ^x)
+# превращаются в подстрочные/надстрочные индексы.
+_SUBSUP_RE = re.compile(r"(_\{[^}]*\}|\^\{[^}]*\}|_[^\s_^]|\^[^\s_^])")
+
+
+def formula_runs(text: str, *, sz_hp: int = SZ_BODY_HP,
+                 italic: bool = False) -> str:
+    """Собрать runs для текста формулы с поддержкой индексов и степеней."""
+    out: list[str] = []
+    pos = 0
+    for m in _SUBSUP_RE.finditer(text):
+        if m.start() > pos:
+            out.append(run(text[pos:m.start()], sz_hp=sz_hp, italic=italic))
+        tok = m.group(0)
+        kind = "subscript" if tok[0] == "_" else "superscript"
+        inner = tok[2:-1] if tok[1] == "{" else tok[1:]
+        out.append(run(inner, sz_hp=sz_hp, italic=italic, vert_align=kind))
+        pos = m.end()
+    if pos < len(text):
+        out.append(run(text[pos:], sz_hp=sz_hp, italic=italic))
+    if not out:
+        out.append(run(text, sz_hp=sz_hp, italic=italic))
+    return "".join(out)
+
+
+def formula_paragraph(eq: str, number: str = "") -> str:
+    """Формула отдельной строкой: по центру, номер прижат к правому полю.
+
+    Реализовано через центрирующий и правый табуляторы (требование
+    Положения: формула отдельной строкой, номер в круглых скобках справа)."""
+    center_pos = CONTENT_W_TW // 2
+    right_pos = CONTENT_W_TW
+    ppr_xml = (
+        '<w:pPr>'
+        f'<w:tabs>'
+        f'<w:tab w:val="center" w:pos="{center_pos}"/>'
+        f'<w:tab w:val="right" w:pos="{right_pos}"/>'
+        '</w:tabs>'
+        f'<w:spacing w:before="120" w:after="120" '
+        f'w:line="{LINE_BODY}" w:lineRule="auto"/>'
+        '<w:jc w:val="left"/>'
+        '<w:rPr>'
+        f'<w:rFonts w:ascii="{FONT_MAIN}" w:hAnsi="{FONT_MAIN}" '
+        f'w:cs="{FONT_MAIN}" w:eastAsia="{FONT_MAIN}"/>'
+        f'<w:sz w:val="{SZ_BODY_HP}"/><w:szCs w:val="{SZ_BODY_HP}"/>'
+        '<w:lang w:val="ru-RU"/>'
+        '</w:rPr>'
+        '</w:pPr>'
+    )
+    content = tab_run() + formula_runs(eq, italic=True)
+    if number:
+        content += tab_run() + run(number)
+    return f'<w:p>{ppr_xml}{content}</w:p>'
+
+
+def where_block(entries: list[str]) -> str:
+    """Блок пояснений символов: со слова «где», каждый символ — с новой строки."""
+    parts: list[str] = []
+    for i, entry in enumerate(entries):
+        prefix = "где " if i == 0 else ""
+        parts.append(
+            para(
+                (run(prefix) if prefix else "") + formula_runs(entry, italic=False),
+                align="both", indent_first=0,
+                line=LINE_BODY, line_rule="auto",
+                space_before=0, space_after=0,
+            )
+        )
+    return "".join(parts)
 
 
 def ppr(*, align: str = "both", indent_first: int = 0, indent_left: int = 0,
@@ -465,15 +543,19 @@ def parse_markdown(md_path: Path) -> list[dict]:
         ln = lines[i]
         stripped = ln.strip()
 
-        # Блок кода ```...```
+        # Блок кода ```...``` (включая ```formula для формул)
         if stripped.startswith("```"):
             flush_all()
+            info = stripped[3:].strip().lower()
             j = i + 1
             code_lines: list[str] = []
             while j < n and not lines[j].strip().startswith("```"):
                 code_lines.append(lines[j])
                 j += 1
-            blocks.append({"type": "code", "lines": code_lines})
+            if info == "formula":
+                blocks.append({"type": "formula", "lines": code_lines})
+            else:
+                blocks.append({"type": "code", "lines": code_lines})
             i = j + 1 if j < n else j
             continue
 
@@ -582,6 +664,31 @@ def render_blocks(blocks: list[dict]) -> str:
             for ln in b["lines"]:
                 parts.append(code_line_para(ln))
             parts.append(empty_para(LINE_SINGLE))
+        elif t == "formula":
+            # Внутри блока:
+            #   строка вида "EQ ||| (3.3.1)"  — формула с номером справа;
+            #   строка "EQ"                    — формула без номера;
+            #   строка "где| symbol — ..."     — первая строка пояснения;
+            #   строка "| symbol — ..."        — последующие пояснения.
+            where_entries: list[str] = []
+            for ln in b["lines"]:
+                s = ln.rstrip()
+                if not s.strip():
+                    continue
+                if s.lstrip().startswith("|"):
+                    where_entries.append(s.lstrip()[1:].strip())
+                    continue
+                # это строка формулы — сперва выгрузим накопленные пояснения
+                if where_entries:
+                    parts.append(where_block(where_entries))
+                    where_entries = []
+                if "|||" in s:
+                    eq, num = s.split("|||", 1)
+                    parts.append(formula_paragraph(eq.strip(), num.strip()))
+                else:
+                    parts.append(formula_paragraph(s.strip(), ""))
+            if where_entries:
+                parts.append(where_block(where_entries))
         elif t == "table":
             parts.append(render_table(b["header"], b["rows"],
                                       aligns=b.get("aligns")))
