@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" font-family="Times New Roman, serif" font-size="13">
-  <text x="380" y="22" text-anchor="middle" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" font-family="Times New Roman, serif" font-size="13">
+  <text x="400" y="22" text-anchor="middle" font-size="15">
     Маркетинговая воронка Face2 в сопоставлении с эталонной воронкой биометрического продукта
   </text>
 
-  <!-- Две воронки рядом: слева — эталон, справа — Face2 (как есть). -->
-  <!-- Высота каждой ступени 50; ширина ступени уменьшается линейно. -->
+  <!-- Две воронки рядом: слева — эталон (центр x=190), справа — Face2 как есть (центр x=570). -->
+  <!-- Обе воронки выровнены по одним и тем же уровням y: 80,120,160,220,260,300,340. -->
+  <!-- Каждая ступень примыкает нижней гранью к верхней грани следующей (непрерывный контур). -->
 
   <!-- ШАПКИ -->
   <text x="190" y="58" text-anchor="middle" font-weight="normal">Эталонная воронка биометрии</text>
   <text x="570" y="58" text-anchor="middle" font-weight="normal">Воронка Face2 (как есть)</text>
 
-  <!-- ЭТАЛОН: 6 ступеней, каждая полная -->
+  <!-- ЭТАЛОН: 6 ступеней, равномерное сужение, расширенный этап «Доверие» -->
   <g>
     <!-- Осведомлённость -->
     <polygon points="60,80 320,80 300,120 80,120" fill="#cfe2f3" stroke="#234"/>
@@ -35,7 +36,8 @@
     <text x="190" y="325" text-anchor="middle" fill="#fff" font-size="11">Лояльность</text>
   </g>
 
-  <!-- Face2 (как есть): те же ступени, но «Доверие» сужено, «Лояльность» почти отсутствует -->
+  <!-- Face2 (как есть): те же уровни y, непрерывный контур; -->
+  <!-- «Доверие» — резкое сужение (узкое горлышко), «Лояльность» почти схлопнута. -->
   <g>
     <polygon points="440,80 700,80 680,120 460,120" fill="#cfe2f3" stroke="#234"/>
     <text x="570" y="105" text-anchor="middle">Осведомлённость</text>
@@ -43,36 +45,37 @@
     <polygon points="460,120 680,120 660,160 480,160" fill="#9fc5e8" stroke="#234"/>
     <text x="570" y="145" text-anchor="middle">Интерес</text>
 
-    <!-- Доверие сильно сужено -->
-    <polygon points="480,160 660,160 580,200 560,200" fill="#6fa8dc" stroke="#234" stroke-dasharray="4,2"/>
-    <text x="570" y="183" text-anchor="middle" fill="#fff" font-size="11">Доверие — фрагментарно</text>
+    <!-- Доверие — узкое горлышко (фрагментарно) -->
+    <polygon points="480,160 660,160 600,220 540,220" fill="#6fa8dc" stroke="#234" stroke-dasharray="4,2"/>
+    <text x="570" y="193" text-anchor="middle" fill="#fff" font-size="11">Доверие — фрагментарно</text>
 
-    <!-- Пилот — сильный за счёт push -->
-    <polygon points="500,200 640,200 615,240 525,240" fill="#3d85c6" stroke="#234"/>
-    <text x="570" y="225" text-anchor="middle" fill="#fff">Пилот (push)</text>
+    <!-- Пилот — держит ширину за счёт push -->
+    <polygon points="540,220 600,220 596,260 544,260" fill="#3d85c6" stroke="#234"/>
+    <text x="570" y="245" text-anchor="middle" fill="#fff" font-size="11">Пилот (push)</text>
 
-    <polygon points="525,240 615,240 595,280 545,280" fill="#1c4587" stroke="#234"/>
-    <text x="570" y="265" text-anchor="middle" fill="#fff">Принятие</text>
+    <polygon points="544,260 596,260 588,300 552,300" fill="#1c4587" stroke="#234"/>
+    <text x="570" y="285" text-anchor="middle" fill="#fff" font-size="11">Принятие</text>
 
-    <polygon points="545,280 595,280 590,320 550,320" fill="#0b1d3a" stroke="#234" stroke-dasharray="4,2"/>
-    <text x="570" y="305" text-anchor="middle" fill="#fff" font-size="10">Лояльность — пробел</text>
+    <!-- Лояльность — почти схлопнута (пробел) -->
+    <polygon points="552,300 588,300 575,340 565,340" fill="#0b1d3a" stroke="#234" stroke-dasharray="4,2"/>
+    <text x="570" y="358" text-anchor="middle" fill="#a04000" font-size="10">Лояльность — пробел</text>
   </g>
 
   <!-- Аннотации справа от Face2 -->
   <g font-size="11" fill="#a04000">
-    <line x1="660" y1="180" x2="710" y2="180" stroke="#a04000"/>
-    <text x="715" y="184">пробел 2 (контентный)</text>
-    <line x1="660" y1="220" x2="710" y2="220" stroke="#a04000"/>
-    <text x="715" y="224">push сильнее pull</text>
-    <line x1="660" y1="300" x2="710" y2="300" stroke="#a04000"/>
-    <text x="715" y="304">пробел 7 (лояльностный)</text>
+    <line x1="632" y1="190" x2="700" y2="190" stroke="#a04000"/>
+    <text x="706" y="194">пробел 2 (контентный)</text>
+    <line x1="600" y1="240" x2="700" y2="240" stroke="#a04000"/>
+    <text x="706" y="244">push сильнее pull</text>
+    <line x1="584" y1="320" x2="700" y2="320" stroke="#a04000"/>
+    <text x="706" y="324">пробел 7 (лояльностный)</text>
   </g>
 
   <!-- Подпись внизу: разрыв -->
-  <text x="380" y="380" text-anchor="middle" font-size="12" fill="#a04000">
-    Этап «Доверие» в эталоне расширен; у Face2 он узкий, а ступень «Лояльность» практически отсутствует.
+  <text x="400" y="392" text-anchor="middle" font-size="12" fill="#a04000">
+    Этап «Доверие» в эталоне расширен равномерно; у Face2 он узкий, а ступень «Лояльность» практически отсутствует.
   </text>
-  <text x="380" y="400" text-anchor="middle" font-size="11" fill="#555">
+  <text x="400" y="412" text-anchor="middle" font-size="11" fill="#555">
     Источник: построено автором по данным таблицы 2.3.2, [6, с. 64; 20, с. 11; 19, с. 6; 27].
   </text>
 </svg>
